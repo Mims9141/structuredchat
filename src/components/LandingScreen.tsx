@@ -18,8 +18,6 @@ interface LandingScreenProps {
 const STORAGE_KEY = 'onetwoone_name'
 
 function LandingScreen({ userCounts, onStartChat, onShowAdmin, connected }: LandingScreenProps) {
-  // onShowAdmin is used in button onClick below - reference to mark as used
-  typeof onShowAdmin;
   // Load name from localStorage on mount
   const [name, setName] = useState<string>(() => {
     try {

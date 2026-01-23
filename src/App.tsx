@@ -40,8 +40,6 @@ interface UserCounts {
 
 function App() {
   const { socket, connected } = useSocket()
-  // AdminScreen is used in conditional render below - reference to mark as used
-  typeof AdminScreen;
   const [screen, setScreen] = useState<Screen>('landing')
   const [chatMode, setChatMode] = useState<ChatMode>(null)
   const [currentSegment, setCurrentSegment] = useState<number>(0)
@@ -59,8 +57,6 @@ function App() {
     onConfirm: () => void
   } | null>(null)
   const [reports, setReports] = useState<Report[]>([])
-  // reports is used in AdminScreen component below - reference to mark as used
-  typeof reports;
   const [userCounts, setUserCounts] = useState<UserCounts>({
     total: 0,
     video: 0,
