@@ -257,8 +257,9 @@ io.on('connection', (socket) => {
       
       console.log(`🔵 MATCH FOUND: ${socket.id} (${userName}) matched with ${match.socketId} (${matchName}) in ${actualMode} mode`);
       
-      userSessions.set(socket.id, { roomId, userId: 'user1', mode: actualMode, name: userName });
-      userSessions.set(match.socketId, { roomId, userId: 'user2', mode: actualMode, name: matchName });
+      // Store both actual mode and original requested mode for auto-matching
+      userSessions.set(socket.id, { roomId, userId: 'user1', mode: actualMode, originalMode: mode, name: userName });
+      userSessions.set(match.socketId, { roomId, userId: 'user2', mode: actualMode, originalMode: match.requestedMode || actualMode, name: matchName });
       
       // Notify both users with peer names and the actual chat mode
       const matchFoundData1 = { roomId, userId: 'user1', peerId: match.socketId, peerName: matchName, chatMode: actualMode };
@@ -366,12 +367,12 @@ io.on('connection', (socket) => {
   })
 
   // Handle segment change
-  socket.on('segmentChange', ({ roomId, segment }) => {
+  socket.on('segmentChange', ({ roomId, segment, round }) => {
     const room = activeRooms.get(roomId);
     if (room) {
       room.users.forEach(userId => {
         if (userId !== socket.id) {
-          io.to(userId).emit('segmentChanged', { segment });
+          io.to(userId).emit('segmentChanged', { segment, round: round || 1 });
         }
       });
     }
@@ -395,12 +396,16 @@ io.on('connection', (socket) => {
     if (session) {
       const room = activeRooms.get(session.roomId);
       if (room) {
-        // Notify other user
-        room.users.forEach(userId => {
-          if (userId !== socket.id) {
-            io.to(userId).emit('peerDisconnected');
-          }
-        });
+        // Get the other user's session to find their original requested mode
+        const otherSocketId = room.users.find(id => id !== socket.id);
+        if (otherSocketId) {
+          const otherSession = userSessions.get(otherSocketId);
+          // Use originalMode if available (for 'any' users), otherwise use current mode
+          const chatMode = otherSession?.originalMode || otherSession?.mode || room.mode;
+          
+          // Notify other user with their original chat mode so they can auto-match
+          io.to(otherSocketId).emit('peerDisconnected', { chatMode });
+        }
         
         // Clean up room
         activeRooms.delete(session.roomId);

@@ -44,6 +44,7 @@ function App() {
   const [screen, setScreen] = useState<Screen>('landing')
   const [chatMode, setChatMode] = useState<ChatMode>(null)
   const [currentSegment, setCurrentSegment] = useState<number>(0)
+  const [round, setRound] = useState<number>(1)
   const [timeRemaining, setTimeRemaining] = useState<number>(60)
   const [messages, setMessages] = useState<Message[]>([])
   const [showReportModal, setShowReportModal] = useState<boolean>(false)
@@ -72,11 +73,16 @@ function App() {
 
   const timerRef = useRef<number | null>(null)
   const userIdRef = useRef<'user1' | 'user2' | null>(null)
+  const roundRef = useRef<number>(1)
   
-  // Keep userIdRef in sync with userId state
+  // Keep refs in sync with state
   useEffect(() => {
     userIdRef.current = userId
   }, [userId])
+  
+  useEffect(() => {
+    roundRef.current = round
+  }, [round])
 
   // Initialize sounds on first user interaction
   useEffect(() => {
@@ -138,6 +144,7 @@ function App() {
       setPeerName(matchedPeerName || null)
       setScreen('chat')
       setCurrentSegment(0)
+      setRound(1)
       setTimeRemaining(60)
       
       playMatchSound()
@@ -184,15 +191,52 @@ function App() {
       })
     })
 
-    socket.on('peerDisconnected', () => {
-      alert('The other person has disconnected.')
-      handleEnd()
+    socket.on('peerDisconnected', ({ chatMode }: { chatMode?: string }) => {
+      // Show on-screen notification
+      setSuccessMessage('The other person has left the chat. Finding a new match...')
+      setShowSuccessMessage(true)
+      
+      // Clean up current chat state
+      if (socket && roomId) {
+        socket.emit('leaveRoom', { roomId })
+      }
+      
+      setMessages([])
+      setCurrentSegment(0)
+      setTimeRemaining(60)
+      setRoomId(null)
+      setUserId(null)
+      setPeerId(null)
+      setPeerName(null)
+      
+      // Auto-match in the same chat type
+      if (chatMode && socket) {
+        // Use userName if available, otherwise try localStorage
+        let nameToUse = userName
+        if (!nameToUse) {
+          try {
+            nameToUse = localStorage.getItem('onetwoone_name')?.trim() || 'User'
+          } catch {
+            nameToUse = 'User'
+          }
+        }
+        
+        // Set the chat mode and start matching
+        setChatMode(chatMode as ChatMode)
+        socket.emit('findMatch', { mode: chatMode, name: nameToUse })
+        setScreen('waiting')
+      } else {
+        // If no chat mode provided, go back to landing
+        setChatMode(null)
+        setScreen('landing')
+      }
     })
 
     socket.on('peerLeft', () => {
       // Other user left the room - go back to waiting to find new match
       setMessages([])
       setCurrentSegment(0)
+      setRound(1)
       setTimeRemaining(60)
       setRoomId(null)
       setUserId(null)
@@ -214,8 +258,11 @@ function App() {
       }
     })
 
-    socket.on('segmentChanged', ({ segment }: { segment: number }) => {
+    socket.on('segmentChanged', ({ segment, round: newRound }: { segment: number, round?: number }) => {
       setCurrentSegment(segment)
+      if (newRound !== undefined) {
+        setRound(newRound)
+      }
       setTimeRemaining(60)
     })
 
@@ -250,10 +297,31 @@ function App() {
           // Time's up - move to next segment
           setCurrentSegment(prevSegment => {
             const nextSegment = (prevSegment + 1) % 4
+            const isNewRound = prevSegment === 3 && nextSegment === 0
             
-            // Notify peer about segment change
-            if (socket && roomId) {
-              socket.emit('segmentChange', { roomId, segment: nextSegment })
+            // Increment round if we completed segment 4 (going from 3 to 0)
+            if (isNewRound) {
+              setRound(prevRound => {
+                const newRound = prevRound + 1
+                // Notify peer about segment change with new round
+                if (socket && roomId) {
+                  socket.emit('segmentChange', { 
+                    roomId, 
+                    segment: nextSegment,
+                    round: newRound
+                  })
+                }
+                return newRound
+              })
+            } else {
+              // Notify peer about segment change (same round)
+              if (socket && roomId) {
+                socket.emit('segmentChange', { 
+                  roomId, 
+                  segment: nextSegment,
+                  round: roundRef.current
+                })
+              }
             }
             
             return nextSegment
@@ -272,7 +340,7 @@ function App() {
         timerRef.current = null
       }
     }
-  }, [screen, socket, roomId]) // Removed currentSegment from dependencies to prevent timer reset
+  }, [screen, socket, roomId, round]) // Include round in dependencies
 
   const startChat = (mode: Exclude<ChatMode, null>, name: string) => {
     if (!socket) {
@@ -333,6 +401,7 @@ function App() {
         
         setMessages([])
         setCurrentSegment(0)
+        setRound(1)
         setTimeRemaining(60)
         setRoomId(null)
         setUserId(null)
@@ -375,6 +444,7 @@ function App() {
         setScreen('landing')
         setMessages([])
         setCurrentSegment(0)
+        setRound(1)
         setTimeRemaining(60)
         setChatMode(null)
         setRoomId(null)
@@ -419,6 +489,7 @@ function App() {
           setScreen('landing')
           setMessages([])
           setCurrentSegment(0)
+          setRound(1)
           setTimeRemaining(60)
           setChatMode(null)
           setRoomId(null)
@@ -441,13 +512,20 @@ function App() {
   const handleSkip = () => {
     console.log('[App] handleSkip called, currentSegment:', currentSegment)
     const nextSegment = (currentSegment + 1) % 4
-    console.log('[App] Moving to next segment:', nextSegment)
+    const isNewRound = currentSegment === 3 && nextSegment === 0
+    const newRound = isNewRound ? round + 1 : round
+    
+    console.log('[App] Moving to next segment:', nextSegment, 'round:', newRound)
     setCurrentSegment(nextSegment)
     setTimeRemaining(60)
     
+    if (isNewRound) {
+      setRound(newRound)
+    }
+    
     if (socket && roomId) {
-      console.log('[App] Emitting segmentChange event:', { roomId, segment: nextSegment })
-      socket.emit('segmentChange', { roomId, segment: nextSegment })
+      console.log('[App] Emitting segmentChange event:', { roomId, segment: nextSegment, round: newRound })
+      socket.emit('segmentChange', { roomId, segment: nextSegment, round: newRound })
     } else {
       console.warn('[App] Cannot emit segmentChange - missing socket or roomId', { socket: !!socket, roomId })
     }
@@ -529,6 +607,7 @@ function App() {
             setPeerName(null)
             setMessages([])
             setCurrentSegment(0)
+            setRound(1)
             setTimeRemaining(60)
           }}
         />
@@ -545,6 +624,7 @@ function App() {
         <ChatScreen
           chatMode={chatMode}
           currentSegment={currentSegment}
+          round={round}
           timeRemaining={timeRemaining}
           messages={messages}
           onNext={handleNext}
@@ -584,6 +664,7 @@ function App() {
         <SuccessMessage
           message={successMessage}
           onClose={() => setShowSuccessMessage(false)}
+          autoCloseDelay={3000}
         />
       )}
       
