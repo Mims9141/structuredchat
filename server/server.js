@@ -6,10 +6,12 @@ import cors from 'cors';
 const app = express();
 const httpServer = createServer(app);
 
-// CORS configuration - allow localhost and Vercel domains
+// CORS configuration - allow localhost, Vercel domains, and custom domain
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'https://onetwoone.io',
+  'https://www.onetwoone.io',
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
 ];
 
@@ -20,6 +22,10 @@ const isAllowedOrigin = (origin) => {
     return true;
   }
   if (origin.includes('.vercel.app')) {
+    return true;
+  }
+  // Allow custom domain
+  if (origin === 'https://onetwoone.io' || origin === 'https://www.onetwoone.io') {
     return true;
   }
   return allowedOrigins.includes(origin);
@@ -159,6 +165,103 @@ function updateUserCounts() {
 // Reports storage
 const reports = [];
 
+// =========================
+// Middle Debate (MVP)
+// =========================
+// In-memory debate rooms (for production, use a DB + SFU for scaling)
+const debateRooms = new Map(); // roomCode -> roomState
+
+function generateDebateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function shuffle(array) {
+  const a = [...array];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function debateRoomName(roomCode) {
+  return `debate:${roomCode}`;
+}
+
+function getDebateState(room) {
+  const now = Date.now();
+  let endsAt = null;
+  if (room.phase === 'debate') endsAt = room.segmentEndsAt;
+  if (room.phase === 'qna') endsAt = room.qnaEndsAt;
+  const secondsRemaining = endsAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : 0;
+
+  return {
+    roomCode: room.code,
+    phase: room.phase,
+    segmentsTotal: room.segmentsTotal,
+    segmentIndex: room.segmentIndex,
+    speaker: room.speaker,
+    secondsRemaining,
+    viewersCount: room.viewers.size,
+    debaters: {
+      debater1: room.debater1?.socketId,
+      debater2: room.debater2?.socketId
+    },
+    currentQuestion: room.currentQuestion ?? null
+  };
+}
+
+function emitDebateState(room) {
+  io.to(debateRoomName(room.code)).emit('debate-state', getDebateState(room));
+}
+
+function startDebateTimer(room) {
+  if (room.timer) {
+    clearInterval(room.timer);
+    room.timer = null;
+  }
+  room.timer = setInterval(() => {
+    const now = Date.now();
+    if (room.phase === 'debate' && now >= room.segmentEndsAt) {
+      if (room.segmentIndex + 1 < room.segmentsTotal) {
+        room.segmentIndex += 1;
+        room.speaker = room.speaker === 'debater1' ? 'debater2' : 'debater1';
+        room.segmentEndsAt = Date.now() + 120000; // 2 minutes
+        emitDebateState(room);
+      } else {
+        // Transition to QnA
+        room.phase = 'qna';
+        room.speaker = 'both';
+        room.qnaEndsAt = Date.now() + 600000; // 10 minutes
+        room.segmentEndsAt = null;
+        room.currentQuestion = null;
+        room.qnaOrder = [];
+        room.qnaIndex = 0;
+        emitDebateState(room);
+      }
+    }
+
+    if (room.phase === 'qna' && now >= room.qnaEndsAt) {
+      room.phase = 'ended';
+      room.speaker = 'both';
+      room.currentQuestion = null;
+      emitDebateState(room);
+      if (room.timer) {
+        clearInterval(room.timer);
+        room.timer = null;
+      }
+    }
+
+    // Broadcast countdown updates
+    if (room.phase === 'debate' || room.phase === 'qna') {
+      emitDebateState(room);
+    }
+  }, 1000);
+}
+
 // Helper function to find a match
 function findMatch(socketId, mode) {
   // If mode is 'any', search video, audio, text queues in priority order
@@ -226,6 +329,201 @@ io.on('connection', (socket) => {
   
   // Update counts and send to new user
   updateUserCounts();
+
+  // =========================
+  // Middle Debate socket events
+  // =========================
+  socket.on('debate-create', ({ name, segmentsTotal }) => {
+    const safeSegments = Math.max(2, Math.min(12, Number(segmentsTotal) || 6));
+    let code = generateDebateRoomCode();
+    while (debateRooms.has(code)) code = generateDebateRoomCode();
+
+    const room = {
+      code,
+      createdAt: Date.now(),
+      phase: 'lobby',
+      segmentsTotal: safeSegments,
+      segmentIndex: 0,
+      speaker: 'debater1',
+      segmentEndsAt: null,
+      qnaEndsAt: null,
+      debater1: null,
+      debater2: null,
+      viewers: new Map(), // socketId -> { name }
+      questionsByViewer: new Map(), // socketId -> { name, questions: [] }
+      currentQuestion: null,
+      qnaOrder: [],
+      qnaIndex: 0,
+      timer: null
+    };
+
+    debateRooms.set(code, room);
+    socket.emit('debate-created', { roomCode: code });
+  });
+
+  socket.on('debate-join', ({ roomCode, role, name }) => {
+    const code = String(roomCode || '').trim().toUpperCase();
+    const room = debateRooms.get(code);
+    if (!room) {
+      socket.emit('debate-joined', { roomCode: code, role: 'viewer', state: null, error: 'Room not found' });
+      return;
+    }
+
+    const displayName = (name || '').toString().trim() || 'Viewer';
+    socket.data.debateName = displayName;
+    socket.data.debateRoom = code;
+
+    socket.join(debateRoomName(code));
+
+    let assignedRole = 'viewer';
+    if (role === 'debater') {
+      if (!room.debater1) {
+        room.debater1 = { socketId: socket.id, name: displayName };
+        assignedRole = 'debater1';
+      } else if (!room.debater2) {
+        room.debater2 = { socketId: socket.id, name: displayName };
+        assignedRole = 'debater2';
+      } else {
+        assignedRole = 'viewer';
+      }
+    }
+
+    if (assignedRole === 'viewer') {
+      room.viewers.set(socket.id, { name: displayName, joinedAt: Date.now() });
+      if (!room.questionsByViewer.has(socket.id)) {
+        room.questionsByViewer.set(socket.id, { name: displayName, questions: [] });
+      }
+    }
+
+    const state = getDebateState(room);
+    socket.emit('debate-joined', { roomCode: code, role: assignedRole, state });
+    emitDebateState(room);
+
+    // Notify debaters a viewer is available for WebRTC offers
+    if (assignedRole === 'viewer') {
+      if (room.debater1?.socketId) io.to(room.debater1.socketId).emit('debate-viewer-joined', { viewerSocketId: socket.id });
+      if (room.debater2?.socketId) io.to(room.debater2.socketId).emit('debate-viewer-joined', { viewerSocketId: socket.id });
+    }
+  });
+
+  socket.on('debate-viewer-ready', ({ roomCode }) => {
+    const code = String(roomCode || '').trim().toUpperCase();
+    const room = debateRooms.get(code);
+    if (!room) return;
+    if (!room.viewers.has(socket.id)) {
+      // If they reloaded and joined as viewer, this may still be true later; ignore.
+      return;
+    }
+    if (room.debater1?.socketId) io.to(room.debater1.socketId).emit('debate-viewer-joined', { viewerSocketId: socket.id });
+    if (room.debater2?.socketId) io.to(room.debater2.socketId).emit('debate-viewer-joined', { viewerSocketId: socket.id });
+  });
+
+  socket.on('debate-start', ({ roomCode }) => {
+    const code = String(roomCode || '').trim().toUpperCase();
+    const room = debateRooms.get(code);
+    if (!room) return;
+    if (room.phase !== 'lobby') return;
+    if (!room.debater1 || !room.debater2) return;
+
+    room.phase = 'debate';
+    room.segmentIndex = 0;
+    room.speaker = 'debater1';
+    room.segmentEndsAt = Date.now() + 120000; // 2 minutes
+    room.qnaEndsAt = null;
+    room.currentQuestion = null;
+    emitDebateState(room);
+    startDebateTimer(room);
+  });
+
+  socket.on('debate-chat', ({ roomCode, text }) => {
+    const code = String(roomCode || '').trim().toUpperCase();
+    const room = debateRooms.get(code);
+    if (!room) return;
+    const msgText = (text || '').toString().trim();
+    if (!msgText) return;
+    const msg = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      ts: Date.now(),
+      name: socket.data.debateName || socket.data.name || 'User',
+      text: msgText
+    };
+    io.to(debateRoomName(code)).emit('debate-chat', msg);
+  });
+
+  socket.on('debate-question', ({ roomCode, text }) => {
+    const code = String(roomCode || '').trim().toUpperCase();
+    const room = debateRooms.get(code);
+    if (!room) return;
+    const q = (text || '').toString().trim();
+    if (!q) return;
+
+    // Only viewers submit questions (debaters can still see Q&A)
+    if (!room.viewers.has(socket.id)) return;
+
+    const entry = room.questionsByViewer.get(socket.id) || { name: socket.data.debateName || 'Viewer', questions: [] };
+    entry.name = socket.data.debateName || entry.name;
+    entry.questions.push(q);
+    room.questionsByViewer.set(socket.id, entry);
+  });
+
+  socket.on('debate-qna-next', ({ roomCode }) => {
+    const code = String(roomCode || '').trim().toUpperCase();
+    const room = debateRooms.get(code);
+    if (!room) return;
+    if (room.phase !== 'qna') return;
+
+    // Only debaters can advance questions
+    const isDebater = room.debater1?.socketId === socket.id || room.debater2?.socketId === socket.id;
+    if (!isDebater) return;
+
+    // Build list of viewers with pending questions
+    const viewersWithQs = [];
+    for (const [viewerId, entry] of room.questionsByViewer.entries()) {
+      if (entry.questions && entry.questions.length > 0) viewersWithQs.push(viewerId);
+    }
+
+    if (viewersWithQs.length === 0) {
+      room.currentQuestion = null;
+      emitDebateState(room);
+      return;
+    }
+
+    if (!room.qnaOrder || room.qnaOrder.length === 0 || room.qnaIndex >= room.qnaOrder.length) {
+      room.qnaOrder = shuffle(viewersWithQs);
+      room.qnaIndex = 0;
+    }
+
+    // Ensure next viewer still has questions; if not, rebuild
+    let attempts = 0;
+    while (attempts < 5) {
+      const viewerId = room.qnaOrder[room.qnaIndex];
+      const entry = room.questionsByViewer.get(viewerId);
+      if (entry && entry.questions.length > 0) {
+        room.qnaIndex += 1;
+        const text = entry.questions.shift();
+        room.currentQuestion = { fromViewerId: viewerId, fromViewerName: entry.name || 'Viewer', text };
+        emitDebateState(room);
+        return;
+      }
+      attempts += 1;
+      // Rebuild order with remaining viewers
+      room.qnaOrder = shuffle(viewersWithQs);
+      room.qnaIndex = 0;
+    }
+  });
+
+  // WebRTC signaling (targeted)
+  socket.on('debate-webrtc-offer', ({ roomCode, toId, fromRole, offer }) => {
+    io.to(toId).emit('debate-webrtc-offer', { fromId: socket.id, fromRole, offer });
+  });
+
+  socket.on('debate-webrtc-answer', ({ roomCode, toId, fromRole, answer }) => {
+    io.to(toId).emit('debate-webrtc-answer', { fromId: socket.id, fromRole, answer });
+  });
+
+  socket.on('debate-webrtc-ice', ({ roomCode, toId, fromRole, candidate }) => {
+    io.to(toId).emit('debate-webrtc-ice', { fromId: socket.id, fromRole, candidate });
+  });
 
   // Store name on socket.data (source of truth)
   socket.on('findMatch', ({ mode, name }) => {
@@ -381,6 +679,46 @@ io.on('connection', (socket) => {
   // Handle disconnect
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+
+    // ---- Middle Debate cleanup ----
+    const debateCode = socket.data?.debateRoom;
+    if (debateCode && debateRooms.has(debateCode)) {
+      const dRoom = debateRooms.get(debateCode);
+
+      // Remove viewer
+      if (dRoom.viewers?.has(socket.id)) {
+        dRoom.viewers.delete(socket.id);
+        dRoom.questionsByViewer?.delete(socket.id);
+      }
+
+      // Remove debaters
+      if (dRoom.debater1?.socketId === socket.id) dRoom.debater1 = null;
+      if (dRoom.debater2?.socketId === socket.id) dRoom.debater2 = null;
+
+      // If a debater left mid-session, end the debate
+      if (dRoom.phase === 'debate' || dRoom.phase === 'qna') {
+        if (!dRoom.debater1 || !dRoom.debater2) {
+          dRoom.phase = 'ended';
+          dRoom.speaker = 'both';
+          dRoom.currentQuestion = null;
+          if (dRoom.timer) {
+            clearInterval(dRoom.timer);
+            dRoom.timer = null;
+          }
+        }
+      }
+
+      // Broadcast updated state
+      emitDebateState(dRoom);
+
+      // Delete empty rooms
+      const hasDebaters = !!dRoom.debater1 || !!dRoom.debater2;
+      const hasViewers = dRoom.viewers && dRoom.viewers.size > 0;
+      if (!hasDebaters && !hasViewers) {
+        if (dRoom.timer) clearInterval(dRoom.timer);
+        debateRooms.delete(debateCode);
+      }
+    }
     
     const session = userSessions.get(socket.id);
     

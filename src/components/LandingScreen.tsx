@@ -12,12 +12,15 @@ interface LandingScreenProps {
   userCounts: UserCounts
   onStartChat: (mode: 'video' | 'audio' | 'text' | 'any', name: string) => void
   onShowAdmin: () => void
+  onShowMiddleDebate: (name: string) => void
   connected: boolean
 }
 
 const STORAGE_KEY = 'onetwoone_name'
 
-function LandingScreen({ userCounts, onStartChat, onShowAdmin, connected }: LandingScreenProps) {
+function LandingScreen({ userCounts, onStartChat, onShowAdmin, onShowMiddleDebate, connected }: LandingScreenProps) {
+  const [showMenu, setShowMenu] = useState(false)
+  
   // Load name from localStorage on mount
   const [name, setName] = useState<string>(() => {
     try {
@@ -26,6 +29,19 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin, connected }: Land
       return ''
     }
   })
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.menu-container')) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [showMenu])
 
   // Save name to localStorage whenever it changes
   useEffect(() => {
@@ -56,6 +72,48 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin, connected }: Land
 
   return (
     <div className="landing">
+      <div className="menu-top-left">
+        <div className="menu-container">
+          <button
+            className="hamburger-btn"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setShowMenu(!showMenu)
+            }}
+            type="button"
+            aria-label="Menu"
+          >
+            <span className="hamburger-line"></span>
+            <span className="hamburger-line"></span>
+            <span className="hamburger-line"></span>
+          </button>
+          
+          {showMenu && (
+            <div className="menu-dropdown">
+              <button
+                className="menu-item"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const trimmedName = name.trim()
+                  if (!trimmedName) {
+                    alert('Please enter your name to continue')
+                    return
+                  }
+                  setShowMenu(false)
+                  onShowMiddleDebate(trimmedName)
+                }}
+                disabled={!connected}
+                type="button"
+              >
+                Middle Debate
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      
       <div className="admin-top-right">
         <button 
           className="admin-link-btn"

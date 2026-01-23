@@ -7,11 +7,12 @@ import ReportModal from './components/ReportModal'
 import ConfirmModal from './components/ConfirmModal'
 import SuccessMessage from './components/SuccessMessage'
 import PasswordModal from './components/PasswordModal'
+import MiddleDebate from './components/MiddleDebate'
 import { useSocket } from './contexts/SocketContext'
 import { initSounds, playMatchSound } from './lib/sounds'
 import './App.css'
 
-type Screen = 'landing' | 'waiting' | 'chat' | 'admin'
+type Screen = 'landing' | 'waiting' | 'chat' | 'admin' | 'middleDebate'
 type ChatMode = 'video' | 'audio' | 'text' | 'any' | null
 
 interface Message {
@@ -70,6 +71,7 @@ function App() {
   const [peerId, setPeerId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [peerName, setPeerName] = useState<string | null>(null)
+  const [middleDebateName, setMiddleDebateName] = useState<string | null>(null)
 
   const timerRef = useRef<number | null>(null)
   const userIdRef = useRef<'user1' | 'user2' | null>(null)
@@ -588,6 +590,10 @@ function App() {
           userCounts={userCounts}
           onStartChat={startChat}
           onShowAdmin={() => setShowPasswordModal(true)}
+          onShowMiddleDebate={(name) => {
+            setMiddleDebateName(name)
+            setScreen('middleDebate')
+          }}
           connected={connected}
         />
       )}
@@ -616,6 +622,16 @@ function App() {
       {screen === 'admin' && (
         <AdminScreen
           reports={reports}
+          onBack={() => setScreen('landing')}
+        />
+      )}
+
+      {screen === 'middleDebate' && (
+        <MiddleDebate
+          socket={socket}
+          connected={connected}
+          serverUrl={SERVER_URL}
+          displayName={middleDebateName || userName || 'User'}
           onBack={() => setScreen('landing')}
         />
       )}
