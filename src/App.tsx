@@ -40,6 +40,7 @@ interface UserCounts {
 
 function App() {
   const { socket, connected } = useSocket()
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
   const [screen, setScreen] = useState<Screen>('landing')
   const [chatMode, setChatMode] = useState<ChatMode>(null)
   const [currentSegment, setCurrentSegment] = useState<number>(0)
@@ -95,7 +96,7 @@ function App() {
 
   // Fetch reports on mount and when entering admin screen
   const fetchReports = () => {
-    fetch('http://localhost:3001/api/reports')
+    fetch(`${SERVER_URL}/api/reports`)
       .then(res => res.json())
       .then(data => setReports(data))
       .catch(err => console.error('Failed to fetch reports:', err))
@@ -390,7 +391,7 @@ function App() {
 
   const submitReport = async (reportData: { reasons: string[], details: string }) => {
     try {
-      const response = await fetch('http://localhost:3001/api/reports', {
+      const response = await fetch(`${SERVER_URL}/api/reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

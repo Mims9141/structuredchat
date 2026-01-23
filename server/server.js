@@ -5,11 +5,30 @@ import cors from 'cors';
 
 const app = express();
 const httpServer = createServer(app);
+
+// CORS configuration - allow localhost and Vercel domains
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
+];
+
+// Also allow any *.vercel.app domain
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true; // Allow requests with no origin (like mobile apps or curl requests)
+  if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+    return true;
+  }
+  if (origin.includes('.vercel.app')) {
+    return true;
+  }
+  return allowedOrigins.includes(origin);
+};
+
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      // Allow connections from any localhost port
-      if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
@@ -22,8 +41,7 @@ const io = new Server(httpServer, {
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow connections from any localhost port
-    if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));

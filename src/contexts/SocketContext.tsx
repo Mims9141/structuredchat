@@ -20,10 +20,15 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
-    console.log('[SocketContext] Initializing socket connection to', socketUrl);
-    const newSocket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+    console.log('[SocketContext] Initializing socket connection to', SERVER_URL);
+    // Use websocket first in production (HTTPS), fallback to polling
+    // For HTTPS, prefer websocket; for HTTP, allow both
+    const transports = SERVER_URL.startsWith('https://') 
+      ? ['websocket'] 
+      : ['websocket', 'polling'];
+    const newSocket = io(SERVER_URL, {
+      transports,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
@@ -45,7 +50,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
 
     const handleConnectError = (error: Error) => {
       console.error('[SocketContext] ❌ Connection error:', error.message);
-      console.error('[SocketContext] Make sure the server is running on http://localhost:3001');
+      console.error('[SocketContext] Make sure the server is running on', SERVER_URL);
       console.error('[SocketContext] Full error:', error);
       setConnected(false);
     };
