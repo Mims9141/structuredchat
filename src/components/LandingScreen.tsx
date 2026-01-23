@@ -17,6 +17,7 @@ interface LandingScreenProps {
 const STORAGE_KEY = 'onetwoone_name'
 
 function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenProps) {
+  void onShowAdmin; // Explicitly mark as used for TypeScript
   // Load name from localStorage on mount
   const [name, setName] = useState<string>(() => {
     try {

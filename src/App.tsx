@@ -40,6 +40,7 @@ interface UserCounts {
 
 function App() {
   const { socket, connected } = useSocket()
+  void AdminScreen; // Explicitly mark as used for TypeScript
   const [screen, setScreen] = useState<Screen>('landing')
   const [chatMode, setChatMode] = useState<ChatMode>(null)
   const [currentSegment, setCurrentSegment] = useState<number>(0)
