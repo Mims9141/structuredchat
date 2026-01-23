@@ -22,11 +22,9 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   useEffect(() => {
     const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
     console.log('[SocketContext] Initializing socket connection to', SERVER_URL);
-    // Use websocket first in production (HTTPS), fallback to polling
-    // For HTTPS, prefer websocket; for HTTP, allow both
-    const transports = SERVER_URL.startsWith('https://') 
-      ? ['websocket'] 
-      : ['websocket', 'polling'];
+    // Always include both transports for mobile compatibility
+    // WebSocket is preferred, but polling works better on mobile/cellular networks
+    const transports = ['websocket', 'polling'];
     const newSocket = io(SERVER_URL, {
       transports,
       reconnection: true,
@@ -34,8 +32,10 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
       autoConnect: true,
-      timeout: 20000,
-      forceNew: false
+      timeout: 30000, // Increased timeout for mobile networks
+      forceNew: false,
+      upgrade: true, // Allow transport upgrades
+      rememberUpgrade: false // Don't remember upgrade to avoid issues on mobile
     });
 
     const handleConnect = () => {

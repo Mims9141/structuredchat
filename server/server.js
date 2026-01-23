@@ -42,7 +42,11 @@ const io = new Server(httpServer, {
     },
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  transports: ['websocket', 'polling'], // Support both for mobile compatibility
+  allowEIO3: true, // Allow Engine.IO v3 clients (older mobile browsers)
+  pingTimeout: 60000, // Increased for mobile networks
+  pingInterval: 25000
 });
 
 app.use(cors({
