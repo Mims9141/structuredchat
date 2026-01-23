@@ -127,22 +127,20 @@ function calculateUserCounts() {
     }
   }
   
-  // Track unique users in queues
-  const usersInQueues = new Set();
-  for (const mode in waitingQueues) {
-    waitingQueues[mode].forEach(user => {
-      usersInQueues.add(user.socketId);
-    });
+  // Calculate total: all connected users on the website
+  // This includes users on landing screen, in queues, and in active chats
+  // Only count sockets that are actually connected (not disconnected)
+  let totalConnected = 0;
+  for (const [socketId, socket] of io.sockets.sockets.entries()) {
+    if (socket.connected) {
+      totalConnected++;
+    }
   }
-  
-  // Calculate total: unique users in queues + unique users in rooms
-  // (a user can only be in a queue OR a room, not both)
-  const total = usersInQueues.size + usersInRooms.size;
   
   // Calculate totals: queue + active rooms
   // Note: 'any' queue users are counted in video for display purposes
   return {
-    total: total,
+    total: totalConnected,
     video: queueCounts.video + queueCounts.any + roomCounts.video,
     audio: queueCounts.audio + roomCounts.audio,
     text: queueCounts.text + roomCounts.text
@@ -154,6 +152,8 @@ function updateUserCounts() {
   onlineCounts = calculateUserCounts();
   io.emit('userCounts', onlineCounts);
   console.log('Updated user counts:', onlineCounts);
+  console.log('Total connected sockets:', io.sockets.sockets.size);
+  console.log('Active sockets (connected):', Array.from(io.sockets.sockets.values()).filter(s => s.connected).length);
 }
 
 // Reports storage
