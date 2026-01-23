@@ -1,0 +1,69 @@
+.timer-display {
+  background: var(--bg-card);
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  animation: slideDown 0.4s ease-out;
+}
+
+.segment-label {
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.25rem;
+}
+
+.segment-description {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+}
+
+.timer-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 3px solid var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-family: 'Space Mono', monospace;
+  color: var(--primary);
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.2);
+}
+
+.skip-btn {
+  padding: 0.75rem 2rem;
+  background: var(--primary);
+  color: var(--bg);
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1rem;
+  pointer-events: auto;
+  z-index: 10;
+  position: relative;
+}
+
+.skip-btn:hover {
+  background: var(--primary-dark);
+  transform: scale(1.05);
+}
+
+@media (max-width: 768px) {
+  .timer-circle {
+    width: 100px;
+    height: 100px;
+    font-size: 2rem;
+  }
+}

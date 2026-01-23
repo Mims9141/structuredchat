@@ -1,0 +1,102 @@
+.chat-room {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  animation: fadeIn 0.6s ease-out;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--bg-card);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.chat-header-left h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.chat-controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.control-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.875rem;
+  pointer-events: auto;
+  position: relative;
+  z-index: 100;
+}
+
+.btn-next {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.btn-next:hover {
+  background: #339af0;
+  transform: translateY(-2px);
+}
+
+.btn-end {
+  background: var(--text-dimmer);
+  color: white;
+}
+
+.btn-end:hover {
+  background: var(--text-dim);
+}
+
+.btn-report {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-report:hover {
+  background: #ff5252;
+}
+
+.chat-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+/* Ensure timer display is compact */
+.chat-content .timer-display {
+  flex-shrink: 0;
+}
+
+/* Ensure text chat container takes remaining space */
+.chat-content .text-chat-container {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .chat-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .chat-controls {
+    width: 100%;
+  }
+
+  .control-btn {
+    flex: 1;
+  }
+}

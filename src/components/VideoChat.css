@@ -1,0 +1,60 @@
+.video-container {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: 16px;
+  overflow: hidden;
+  aspect-ratio: 16/9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 2rem;
+}
+
+.video-placeholder-icon {
+  font-size: 4rem;
+}
+
+.video-placeholder-text {
+  font-size: 1.125rem;
+}
+
+.video-placeholder-subtext {
+  font-size: 0.875rem;
+  color: var(--text-dimmer);
+}
+
+.mic-status {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  backdrop-filter: blur(10px);
+}
+
+.mic-icon {
+  font-size: 1.125rem;
+}
+
+.mic-muted {
+  color: var(--accent);
+}
+
+.mic-active {
+  color: var(--primary);
+}
