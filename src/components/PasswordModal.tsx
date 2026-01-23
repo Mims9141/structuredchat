@@ -17,7 +17,7 @@ export default function PasswordModal({ onSuccess, onCancel }: PasswordModalProp
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (password === '121') {
+    if (password === 'OneTwoOne2026Admin') {
       onSuccess()
     } else {
       setError('Incorrect password')

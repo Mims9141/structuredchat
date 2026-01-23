@@ -92,6 +92,70 @@ let onlineCounts = {
   text: 0
 };
 
+// Function to calculate accurate user counts
+function calculateUserCounts() {
+  // Count users in queues by mode
+  const queueCounts = {
+    video: waitingQueues.video.length,
+    audio: waitingQueues.audio.length,
+    text: waitingQueues.text.length,
+    any: waitingQueues.any.length
+  };
+  
+  // Count users in active rooms by mode
+  const roomCounts = {
+    video: 0,
+    audio: 0,
+    text: 0
+  };
+  
+  // Track unique users in rooms to avoid double counting
+  const usersInRooms = new Set();
+  
+  // Count users in each active room
+  for (const [roomId, room] of activeRooms.entries()) {
+    room.users.forEach(userId => {
+      usersInRooms.add(userId);
+    });
+    
+    if (room.mode === 'video') {
+      roomCounts.video += room.users.length;
+    } else if (room.mode === 'audio') {
+      roomCounts.audio += room.users.length;
+    } else if (room.mode === 'text') {
+      roomCounts.text += room.users.length;
+    }
+  }
+  
+  // Track unique users in queues
+  const usersInQueues = new Set();
+  for (const mode in waitingQueues) {
+    waitingQueues[mode].forEach(user => {
+      usersInQueues.add(user.socketId);
+    });
+  }
+  
+  // Calculate total: unique users in queues + unique users in rooms
+  // (a user can only be in a queue OR a room, not both)
+  const total = usersInQueues.size + usersInRooms.size;
+  
+  // Calculate totals: queue + active rooms
+  // Note: 'any' queue users are counted in video for display purposes
+  return {
+    total: total,
+    video: queueCounts.video + queueCounts.any + roomCounts.video,
+    audio: queueCounts.audio + roomCounts.audio,
+    text: queueCounts.text + roomCounts.text
+  };
+}
+
+// Function to update and broadcast user counts
+function updateUserCounts() {
+  onlineCounts = calculateUserCounts();
+  io.emit('userCounts', onlineCounts);
+  console.log('Updated user counts:', onlineCounts);
+}
+
 // Reports storage
 const reports = [];
 
@@ -159,10 +223,9 @@ function generateRoomId() {
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-  onlineCounts.total++;
   
-  // Send initial counts
-  socket.emit('userCounts', onlineCounts);
+  // Update counts and send to new user
+  updateUserCounts();
 
   // Store name on socket.data (source of truth)
   socket.on('findMatch', ({ mode, name }) => {
@@ -170,11 +233,6 @@ io.on('connection', (socket) => {
     socket.data.name = name || 'Stranger';
     
     console.log(`User ${socket.id} (${socket.data.name}) looking for ${mode} match`);
-    
-    // Update counts
-    const countKey = mode === 'any' ? 'video' : mode;
-    onlineCounts[countKey]++;
-    io.emit('userCounts', onlineCounts);
 
     const match = findMatch(socket.id, mode);
     
@@ -213,11 +271,17 @@ io.on('connection', (socket) => {
       io.to(match.socketId).emit('matchFound', matchFoundData2);
       
       console.log(`Match created: ${socket.id} (${userName}) + ${match.socketId} (${matchName}) in room ${roomId} with mode ${actualMode}`);
+      
+      // Update counts after match (users moved from queue to room)
+      updateUserCounts();
     } else {
       // Add to waiting queue with name
       waitingQueues[mode].push({ socketId: socket.id, requestedMode: mode, name: socket.data.name || 'User', joinedAt: Date.now() });
       socket.emit('waiting');
       console.log(`User ${socket.id} (${socket.data.name}) added to ${mode} queue`);
+      
+      // Update counts after joining queue
+      updateUserCounts();
     }
   });
 
@@ -227,10 +291,9 @@ io.on('connection', (socket) => {
       const index = waitingQueues[mode].findIndex(u => u.socketId === socket.id);
       if (index !== -1) {
         waitingQueues[mode].splice(index, 1);
-        const countKey = mode === 'any' ? 'video' : mode;
-        onlineCounts[countKey] = Math.max(0, onlineCounts[countKey] - 1);
-        io.emit('userCounts', onlineCounts);
         console.log(`User ${socket.id} left ${mode} queue`);
+        // Update counts after leaving queue
+        updateUserCounts();
         break;
       }
     }
@@ -317,12 +380,17 @@ io.on('connection', (socket) => {
   // Handle disconnect
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    onlineCounts.total = Math.max(0, onlineCounts.total - 1);
     
     const session = userSessions.get(socket.id);
     
     // Remove from queues
-    socket.emit('leaveQueue');
+    for (const mode in waitingQueues) {
+      const index = waitingQueues[mode].findIndex(u => u.socketId === socket.id);
+      if (index !== -1) {
+        waitingQueues[mode].splice(index, 1);
+        break;
+      }
+    }
     
     if (session) {
       const room = activeRooms.get(session.roomId);
@@ -342,18 +410,8 @@ io.on('connection', (socket) => {
       }
     }
     
-    // Update counts for specific mode
-    for (const mode in waitingQueues) {
-      const index = waitingQueues[mode].findIndex(u => u.socketId === socket.id);
-      if (index !== -1) {
-        waitingQueues[mode].splice(index, 1);
-        const countKey = mode === 'any' ? 'video' : mode;
-        onlineCounts[countKey] = Math.max(0, onlineCounts[countKey] - 1);
-        break;
-      }
-    }
-    
-    io.emit('userCounts', onlineCounts);
+    // Update counts after cleanup
+    updateUserCounts();
   });
 
   // Handle leaving room
@@ -376,20 +434,9 @@ io.on('connection', (socket) => {
         room.users.forEach(userId => {
           userSessions.delete(userId);
         });
-      }
-    }
-    if (session && session.roomId === roomId) {
-      const room = activeRooms.get(roomId);
-      if (room) {
-        room.users.forEach(userId => {
-          if (userId !== socket.id) {
-            io.to(userId).emit('peerLeft');
-          }
-        });
-        activeRooms.delete(roomId);
-        room.users.forEach(userId => {
-          userSessions.delete(userId);
-        });
+        
+        // Update counts after leaving room
+        updateUserCounts();
       }
     }
   });
