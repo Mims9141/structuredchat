@@ -20,8 +20,9 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    console.log('[SocketContext] Initializing socket connection to http://localhost:3001');
-    const newSocket = io('http://localhost:3001', {
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+    console.log('[SocketContext] Initializing socket connection to', socketUrl);
+    const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,

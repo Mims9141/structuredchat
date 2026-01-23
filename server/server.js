@@ -79,19 +79,59 @@ const reports = [];
 
 // Helper function to find a match
 function findMatch(socketId, mode) {
-  const queue = waitingQueues[mode];
-  const compatibleModes = mode === 'any' ? ['video', 'audio', 'text', 'any'] : [mode, 'any'];
-  
-  for (let i = 0; i < queue.length; i++) {
-    const waitingUser = queue[i];
-    if (waitingUser.socketId !== socketId && 
-        compatibleModes.includes(waitingUser.requestedMode)) {
-      // Match found!
-      queue.splice(i, 1);
-      return waitingUser;
+  // If mode is 'any', search video, audio, text queues in priority order
+  if (mode === 'any') {
+    const priorityQueues = ['video', 'audio', 'text'];
+    
+    for (const queueMode of priorityQueues) {
+      const queue = waitingQueues[queueMode];
+      for (let i = 0; i < queue.length; i++) {
+        const waitingUser = queue[i];
+        if (waitingUser.socketId !== socketId) {
+          // Match found! Remove from queue and return with the matched mode
+          queue.splice(i, 1);
+          return { ...waitingUser, matchedMode: queueMode };
+        }
+      }
     }
+    
+    // If no match in priority queues, check 'any' queue
+    const anyQueue = waitingQueues['any'];
+    for (let i = 0; i < anyQueue.length; i++) {
+      const waitingUser = anyQueue[i];
+      if (waitingUser.socketId !== socketId) {
+        anyQueue.splice(i, 1);
+        return { ...waitingUser, matchedMode: 'any' };
+      }
+    }
+    
+    return null;
+  } else {
+    // For specific modes, check own queue and 'any' queue
+    const queue = waitingQueues[mode];
+    const compatibleModes = [mode, 'any'];
+    
+    for (let i = 0; i < queue.length; i++) {
+      const waitingUser = queue[i];
+      if (waitingUser.socketId !== socketId && 
+          compatibleModes.includes(waitingUser.requestedMode)) {
+        queue.splice(i, 1);
+        return { ...waitingUser, matchedMode: mode };
+      }
+    }
+    
+    // Also check 'any' queue for this specific mode
+    const anyQueue = waitingQueues['any'];
+    for (let i = 0; i < anyQueue.length; i++) {
+      const waitingUser = anyQueue[i];
+      if (waitingUser.socketId !== socketId) {
+        anyQueue.splice(i, 1);
+        return { ...waitingUser, matchedMode: mode };
+      }
+    }
+    
+    return null;
   }
-  return null;
 }
 
 // Generate unique room ID
@@ -121,11 +161,16 @@ io.on('connection', (socket) => {
     const match = findMatch(socket.id, mode);
     
     if (match) {
+      // Determine the actual chat mode based on the match
+      // If user requested 'any', use the matched mode (video/audio/text)
+      // Otherwise, use the requested mode
+      const actualMode = mode === 'any' ? match.matchedMode : mode;
+      
       // Create a room
       const roomId = generateRoomId();
       activeRooms.set(roomId, {
         users: [socket.id, match.socketId],
-        mode: mode,
+        mode: actualMode,
         createdAt: Date.now()
       });
       
@@ -134,14 +179,14 @@ io.on('connection', (socket) => {
       const matchName = matchSocket?.data?.name || match.name || 'Stranger';
       const userName = socket.data.name || 'User';
       
-      console.log(`🔵 MATCH FOUND: ${socket.id} (${userName}) matched with ${match.socketId} (${matchName})`);
+      console.log(`🔵 MATCH FOUND: ${socket.id} (${userName}) matched with ${match.socketId} (${matchName}) in ${actualMode} mode`);
       
-      userSessions.set(socket.id, { roomId, userId: 'user1', mode, name: userName });
-      userSessions.set(match.socketId, { roomId, userId: 'user2', mode, name: matchName });
+      userSessions.set(socket.id, { roomId, userId: 'user1', mode: actualMode, name: userName });
+      userSessions.set(match.socketId, { roomId, userId: 'user2', mode: actualMode, name: matchName });
       
-      // Notify both users with peer names
-      const matchFoundData1 = { roomId, userId: 'user1', peerId: match.socketId, peerName: matchName };
-      const matchFoundData2 = { roomId, userId: 'user2', peerId: socket.id, peerName: userName };
+      // Notify both users with peer names and the actual chat mode
+      const matchFoundData1 = { roomId, userId: 'user1', peerId: match.socketId, peerName: matchName, chatMode: actualMode };
+      const matchFoundData2 = { roomId, userId: 'user2', peerId: socket.id, peerName: userName, chatMode: actualMode };
       
       console.log(`🔵 Sending matchFound to ${socket.id}:`, matchFoundData1);
       console.log(`🔵 Sending matchFound to ${match.socketId}:`, matchFoundData2);
@@ -149,7 +194,7 @@ io.on('connection', (socket) => {
       socket.emit('matchFound', matchFoundData1);
       io.to(match.socketId).emit('matchFound', matchFoundData2);
       
-      console.log(`Match created: ${socket.id} (${userName}) + ${match.socketId} (${matchName}) in room ${roomId}`);
+      console.log(`Match created: ${socket.id} (${userName}) + ${match.socketId} (${matchName}) in room ${roomId} with mode ${actualMode}`);
     } else {
       // Add to waiting queue with name
       waitingQueues[mode].push({ socketId: socket.id, requestedMode: mode, name: socket.data.name || 'User', joinedAt: Date.now() });

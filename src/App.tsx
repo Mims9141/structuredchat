@@ -128,8 +128,13 @@ function App() {
       setScreen('waiting')
     })
 
-    socket.on('matchFound', ({ roomId: matchedRoomId, userId: matchedUserId, peerId: matchedPeerId, peerName: matchedPeerName }) => {
-      console.log('Match found!', { roomId: matchedRoomId, userId: matchedUserId, peerId: matchedPeerId, peerName: matchedPeerName, socketId: socket?.id })
+    socket.on('matchFound', ({ roomId: matchedRoomId, userId: matchedUserId, peerId: matchedPeerId, peerName: matchedPeerName, chatMode: matchedChatMode }) => {
+      console.log('Match found!', { roomId: matchedRoomId, userId: matchedUserId, peerId: matchedPeerId, peerName: matchedPeerName, chatMode: matchedChatMode, socketId: socket?.id })
+      
+      // Use the chat mode from server (for 'any' mode, this will be video/audio/text based on what was available)
+      const actualChatMode = matchedChatMode || chatMode
+      setChatMode(actualChatMode as ChatMode)
+      
       setRoomId(matchedRoomId)
       setUserId(matchedUserId)
       setPeerId(matchedPeerId)
@@ -140,7 +145,7 @@ function App() {
       
       playMatchSound()
       
-      if (chatMode === 'text' || chatMode === 'any') {
+      if (actualChatMode === 'text' || actualChatMode === 'any') {
         const welcomeMsg = matchedUserId === 'user1' 
           ? 'Connected! You will start sharing first.'
           : 'Connected! Wait for the other person to start.'
@@ -278,10 +283,10 @@ function App() {
       return
     }
     
-    // Always allow starting - socket.io will handle reconnection automatically
-    // If not connected, try to connect first
-    if (!socket.connected) {
-      socket.connect()
+    // Only allow starting if connected
+    if (!connected) {
+      alert('Please wait for the server connection to be established.')
+      return
     }
     
     // Ensure we have a name - try localStorage if not provided
@@ -492,9 +497,14 @@ function App() {
           background: '#ff4444', 
           color: 'white', 
           borderRadius: '5px',
-          zIndex: 9999
+          zIndex: 9999,
+          fontSize: '0.875rem',
+          fontWeight: 600
         }}>
-          Connecting to server...
+          ⚠️ Connecting to server...
+          <div style={{ fontSize: '0.75rem', marginTop: '4px', opacity: 0.9 }}>
+            Make sure the server is running
+          </div>
         </div>
       )}
       
@@ -503,6 +513,7 @@ function App() {
           userCounts={userCounts}
           onStartChat={startChat}
           onShowAdmin={() => setShowPasswordModal(true)}
+          connected={connected}
         />
       )}
       

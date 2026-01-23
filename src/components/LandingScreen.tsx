@@ -12,11 +12,12 @@ interface LandingScreenProps {
   userCounts: UserCounts
   onStartChat: (mode: 'video' | 'audio' | 'text' | 'any', name: string) => void
   onShowAdmin: () => void
+  connected: boolean
 }
 
 const STORAGE_KEY = 'onetwoone_name'
 
-function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenProps) {
+function LandingScreen({ userCounts, onStartChat, onShowAdmin, connected }: LandingScreenProps) {
   // onShowAdmin is used in button onClick below - reference to mark as used
   typeof onShowAdmin;
   // Load name from localStorage on mount
@@ -110,8 +111,13 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
         <span>{userCounts.total} people online</span>
       </div>
 
-      <button className="start-any-btn" onClick={() => handleStartChat('any')}>
-        START ANY 🔥
+      <button 
+        className="start-any-btn" 
+        onClick={() => handleStartChat('any')}
+        disabled={!connected}
+        style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
+      >
+        {connected ? 'START ANY 🔥' : 'Connecting...'}
       </button>
 
       <div className="format-selector">
@@ -122,9 +128,10 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
-            handleStartChat('video')
+            if (connected) handleStartChat('video')
           }}
           onMouseDown={(e) => e.preventDefault()}
+          style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
         >
           <div className="format-left">
             <span className="format-icon">🎥</span>
@@ -141,14 +148,16 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              handleStartChat('video')
+              if (connected) handleStartChat('video')
             }}
             onMouseDown={(e) => {
               e.preventDefault()
               e.stopPropagation()
             }}
+            disabled={!connected}
+            style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
           >
-            Start
+            {connected ? 'Start' : '...'}
           </button>
         </div>
 
@@ -157,9 +166,10 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
-            handleStartChat('audio')
+            if (connected) handleStartChat('audio')
           }}
           onMouseDown={(e) => e.preventDefault()}
+          style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
         >
           <div className="format-left">
             <span className="format-icon">🎤</span>
@@ -176,14 +186,16 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              handleStartChat('audio')
+              if (connected) handleStartChat('audio')
             }}
             onMouseDown={(e) => {
               e.preventDefault()
               e.stopPropagation()
             }}
+            disabled={!connected}
+            style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
           >
-            Start
+            {connected ? 'Start' : '...'}
           </button>
         </div>
 
@@ -192,9 +204,10 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
-            handleStartChat('text')
+            if (connected) handleStartChat('text')
           }}
           onMouseDown={(e) => e.preventDefault()}
+          style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
         >
           <div className="format-left">
             <span className="format-icon">💬</span>
@@ -211,14 +224,16 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              handleStartChat('text')
+              if (connected) handleStartChat('text')
             }}
             onMouseDown={(e) => {
               e.preventDefault()
               e.stopPropagation()
             }}
+            disabled={!connected}
+            style={{ opacity: connected ? 1 : 0.5, cursor: connected ? 'pointer' : 'not-allowed' }}
           >
-            Start
+            {connected ? 'Start' : '...'}
           </button>
         </div>
       </div>
