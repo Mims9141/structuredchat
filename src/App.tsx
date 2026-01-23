@@ -6,6 +6,7 @@ import AdminScreen from './components/AdminScreen'
 import ReportModal from './components/ReportModal'
 import ConfirmModal from './components/ConfirmModal'
 import SuccessMessage from './components/SuccessMessage'
+import PasswordModal from './components/PasswordModal'
 import { useSocket } from './contexts/SocketContext'
 import { initSounds, playMatchSound } from './lib/sounds'
 import './App.css'
@@ -47,6 +48,7 @@ function App() {
   const [showReportModal, setShowReportModal] = useState<boolean>(false)
   const [showSuccessMessage, setShowSuccessMessage] = useState<boolean>(false)
   const [successMessage, setSuccessMessage] = useState<string>('')
+  const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false)
   const [confirmModal, setConfirmModal] = useState<{
     title: string
     message: string
@@ -91,13 +93,24 @@ function App() {
     }
   }, [])
 
-  // Fetch reports on mount
-  useEffect(() => {
+  // Fetch reports on mount and when entering admin screen
+  const fetchReports = () => {
     fetch('http://localhost:3001/api/reports')
       .then(res => res.json())
       .then(data => setReports(data))
       .catch(err => console.error('Failed to fetch reports:', err))
+  }
+
+  useEffect(() => {
+    fetchReports()
   }, [])
+
+  // Refresh reports when entering admin screen
+  useEffect(() => {
+    if (screen === 'admin') {
+      fetchReports()
+    }
+  }, [screen])
 
   // Socket event listeners
   useEffect(() => {
@@ -485,7 +498,7 @@ function App() {
         <LandingScreen
           userCounts={userCounts}
           onStartChat={startChat}
-          onShowAdmin={() => setScreen('admin')}
+          onShowAdmin={() => setShowPasswordModal(true)}
         />
       )}
       
@@ -506,6 +519,13 @@ function App() {
             setCurrentSegment(0)
             setTimeRemaining(60)
           }}
+        />
+      )}
+      
+      {screen === 'admin' && (
+        <AdminScreen
+          reports={reports}
+          onBack={() => setScreen('landing')}
         />
       )}
       
@@ -552,6 +572,16 @@ function App() {
         <SuccessMessage
           message={successMessage}
           onClose={() => setShowSuccessMessage(false)}
+        />
+      )}
+      
+      {showPasswordModal && (
+        <PasswordModal
+          onSuccess={() => {
+            setShowPasswordModal(false)
+            setScreen('admin')
+          }}
+          onCancel={() => setShowPasswordModal(false)}
         />
       )}
     </div>

@@ -55,6 +55,20 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin }: LandingScreenPr
 
   return (
     <div className="landing">
+      <div className="admin-top-right">
+        <button 
+          className="admin-link-btn"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onShowAdmin()
+          }}
+          type="button"
+        >
+          Admin
+        </button>
+      </div>
+      
       <h1 className="logo">OneTwoOne</h1>
       <p className="tagline">
         Balanced conversations with random strangers. Equal time to share, equal time to listen.
