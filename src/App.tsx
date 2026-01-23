@@ -57,6 +57,7 @@ function App() {
     onConfirm: () => void
   } | null>(null)
   const [reports, setReports] = useState<Report[]>([])
+  void reports; // Explicitly mark as used for TypeScript
   const [userCounts, setUserCounts] = useState<UserCounts>({
     total: 0,
     video: 0,
