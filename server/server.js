@@ -8,10 +8,11 @@ const httpServer = createServer(app);
 
 // CORS configuration - allow localhost, Vercel domains, and custom domain
 const allowedOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  'https://structuredchat.vercel.app',
   'https://onetwoone.io',
   'https://www.onetwoone.io',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
 ];
 
@@ -804,9 +805,9 @@ app.get('/api/reports', (req, res) => {
   res.json(reports);
 });
 
-// Health check
+// Health check endpoint for Render/deployment monitoring
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', onlineUsers: onlineCounts.total });
+  res.status(200).send('ok');
 });
 
 const PORT = process.env.PORT || 3001;
