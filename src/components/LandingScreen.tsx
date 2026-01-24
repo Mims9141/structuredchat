@@ -12,7 +12,7 @@ interface LandingScreenProps {
   userCounts: UserCounts
   onStartChat: (mode: 'video' | 'audio' | 'text' | 'any', name: string) => void
   onShowAdmin: () => void
-  onShowMiddleDebate: (name: string) => void
+  onShowMiddleDebate: () => void
   connected: boolean
 }
 
@@ -96,13 +96,8 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin, onShowMiddleDebat
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  const trimmedName = name.trim()
-                  if (!trimmedName) {
-                    alert('Please enter your name to continue')
-                    return
-                  }
                   setShowMenu(false)
-                  onShowMiddleDebate(trimmedName)
+                  onShowMiddleDebate()
                 }}
                 disabled={!connected}
                 type="button"

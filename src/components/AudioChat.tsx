@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from "react"
-import type { Socket } from "socket.io-client"
 import "./AudioChat.css"
 
 type UserId = "user1" | "user2"
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SocketLike = any // Socket.IO removed, using any for compatibility
+
 interface AudioChatProps {
   roomId: string
   userId: UserId | null
-  socket: Socket | null
+  socket: SocketLike
   currentSegment: number // 0-3 (array index)
 }
 

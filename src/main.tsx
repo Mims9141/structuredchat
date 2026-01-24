@@ -1,13 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
-import { SocketProvider } from './contexts/SocketContext'
+import { SupabaseProvider } from './contexts/SupabaseContext'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <SocketProvider>
+    <SupabaseProvider>
       <App />
-    </SocketProvider>
+    </SupabaseProvider>
   </React.StrictMode>,
 )

@@ -1,15 +1,17 @@
 import { useEffect, useRef, useMemo } from 'react'
-import { Socket } from 'socket.io-client'
 import './VideoChat.css'
 
 type UserId = 'user1' | 'user2'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SocketLike = any // Socket.IO removed, using any for compatibility
 
 interface VideoChatProps {
   canSpeak: boolean
   roomId: string
   userId: 'user1' | 'user2' | null
   peerId: string | null
-  socket: Socket | null
+  socket: SocketLike
   currentSegment: number
 }
 

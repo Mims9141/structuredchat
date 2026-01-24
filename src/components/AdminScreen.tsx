@@ -2,7 +2,7 @@ import './AdminScreen.css'
 
 interface Report {
   id: string
-  timestamp: string
+  created_at: string
   reasons: string[]
   details: string
 }
@@ -41,7 +41,7 @@ function AdminScreen({ reports, onBack }: AdminScreenProps) {
             <div key={report.id} className="report-card">
               <div className="report-header">
                 <span className="report-id">{report.id}</span>
-                <span className="report-time">{report.timestamp}</span>
+                <span className="report-time">{new Date(report.created_at).toLocaleString()}</span>
               </div>
               <div className="report-reasons">
                 {report.reasons.map(reason => (

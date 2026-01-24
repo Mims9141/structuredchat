@@ -1,4 +1,3 @@
-import { Socket } from 'socket.io-client'
 import TimerDisplay from './TimerDisplay'
 import VideoChat from './VideoChat'
 import AudioChat from './AudioChat'
@@ -24,7 +23,7 @@ interface ChatScreenProps {
   roomId: string
   userId: 'user1' | 'user2' | null
   peerId: string | null
-  socket: Socket | null
+  socket: unknown // Socket.IO removed, kept for compatibility
   userName: string
   peerName: string
 }
@@ -152,23 +151,37 @@ function ChatScreen({
         />
 
         {chatMode === 'video' && (
-          <VideoChat 
-            canSpeak={canISpeak} 
-            roomId={roomId}
-            userId={userId}
-            peerId={peerId}
-            socket={socket}
-            currentSegment={currentSegment}
-          />
+          socket ? (
+            <VideoChat 
+              canSpeak={canISpeak} 
+              roomId={roomId}
+              userId={userId}
+              peerId={peerId}
+              socket={socket}
+              currentSegment={currentSegment}
+            />
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+              <p>Video chat requires WebRTC signaling</p>
+              <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>Coming soon with Supabase Realtime</p>
+            </div>
+          )
         )}
 
-        {chatMode === 'audio' && userId && socket && (
-          <AudioChat 
-            roomId={roomId}
-            userId={userId}
-            socket={socket}
-            currentSegment={currentSegment}
-          />
+        {chatMode === 'audio' && userId && (
+          socket ? (
+            <AudioChat 
+              roomId={roomId}
+              userId={userId}
+              socket={socket}
+              currentSegment={currentSegment}
+            />
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+              <p>Audio chat requires WebRTC signaling</p>
+              <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>Coming soon with Supabase Realtime</p>
+            </div>
+          )
         )}
 
         {(chatMode === 'text' || chatMode === 'any') && (

@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react'
-import { useSocket } from '../contexts/SocketContext'
 import './TextChat.css'
 
 interface Message {
@@ -22,7 +21,6 @@ interface TextChatProps {
 }
 
 function TextChat({ messages, canSpeak, onSendMessage, userId, userName = 'You', peerName = 'Stranger' }: TextChatProps) {
-  const { socket } = useSocket()
   const [input, setInput] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -73,11 +71,8 @@ function TextChat({ messages, canSpeak, onSendMessage, userId, userName = 'You',
             )
           }
           
-          // Use isOwn from message (computed using socket.id comparison)
-          // Fallback to socket.id comparison if isOwn not set
-          const isOwnMessage = msg.isOwn !== undefined 
-            ? msg.isOwn 
-            : (msg.senderSocketId ? msg.senderSocketId === socket?.id : false)
+          // Use isOwn from message (computed by comparing user IDs)
+          const isOwnMessage = msg.isOwn ?? false
           
           // Render name from the message, not from current user state
           // For own messages: show userName

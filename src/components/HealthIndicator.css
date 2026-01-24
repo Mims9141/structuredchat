@@ -1,0 +1,108 @@
+.health-indicator {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 9999;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+}
+
+.health-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.health-toggle:hover {
+  transform: scale(1.1);
+}
+
+.health-panel {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  width: 280px;
+  background: rgba(20, 20, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.health-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 600;
+}
+
+.health-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.health-close:hover {
+  color: #fff;
+}
+
+.health-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.health-label {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.health-value {
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.health-ok {
+  color: #00ff9d;
+}
+
+.health-warn {
+  color: #ffaa00;
+}
+
+.health-error {
+  color: #ff4444;
+}
+
+.health-error-msg {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background: rgba(255, 68, 68, 0.1);
+  padding: 8px;
+  border-radius: 4px;
+  margin: 4px 0;
+}
+
+.health-error-msg span:last-child {
+  font-size: 11px;
+  word-break: break-all;
+}

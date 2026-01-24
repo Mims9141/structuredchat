@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import LandingScreen from './components/LandingScreen'
 import WaitingScreen from './components/WaitingScreen'
 import ChatScreen from './components/ChatScreen'
@@ -7,43 +7,50 @@ import ReportModal from './components/ReportModal'
 import ConfirmModal from './components/ConfirmModal'
 import SuccessMessage from './components/SuccessMessage'
 import PasswordModal from './components/PasswordModal'
-import MiddleDebate from './components/MiddleDebate'
-import { useSocket } from './contexts/SocketContext'
+import HealthIndicator from './components/HealthIndicator'
+import { useSupabase } from './contexts/SupabaseContext'
+import type { Message as DbMessage, ChatMode } from './contexts/SupabaseContext'
+import { supabase } from './lib/supabase'
 import { initSounds, playMatchSound } from './lib/sounds'
 import './App.css'
 
-type Screen = 'landing' | 'waiting' | 'chat' | 'admin' | 'middleDebate'
-type ChatMode = 'video' | 'audio' | 'text' | 'any' | null
+type Screen = 'landing' | 'waiting' | 'chat' | 'admin'
 
 interface Message {
   id?: string
-  sender: 'system' | 'user1' | 'user2' // Keep for backward compatibility
-  senderSocketId?: string // Source of truth for determining if message is own
-  senderName?: string // Source of truth for display name
+  sender: 'system' | 'user1' | 'user2'
+  senderName?: string
   text: string
   ts?: number
-  isOwn?: boolean // Computed on client side
+  isOwn?: boolean
 }
 
 interface Report {
   id: string
-  timestamp: string
+  created_at: string
   reasons: string[]
   details: string
 }
 
-interface UserCounts {
-  total: number
-  video: number
-  audio: number
-  text: number
-}
-
 function App() {
-  const { socket, connected } = useSocket()
-  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+  const {
+    connected,
+    userId,
+    userCounts,
+    currentRoom,
+    currentRole,
+    peerName: contextPeerName,
+    messages: dbMessages,
+    healthStatus,
+    startChat: supabaseStartChat,
+    leaveRoom: supabaseLeaveRoom,
+    sendMessage: supabaseSendMessage,
+    submitReport: supabaseSubmitReport,
+    trackPresence,
+  } = useSupabase()
+
   const [screen, setScreen] = useState<Screen>('landing')
-  const [chatMode, setChatMode] = useState<ChatMode>(null)
+  const [chatMode, setChatMode] = useState<ChatMode | null>(null)
   const [currentSegment, setCurrentSegment] = useState<number>(0)
   const [round, setRound] = useState<number>(1)
   const [timeRemaining, setTimeRemaining] = useState<number>(60)
@@ -60,28 +67,17 @@ function App() {
     onConfirm: () => void
   } | null>(null)
   const [reports, setReports] = useState<Report[]>([])
-  const [userCounts, setUserCounts] = useState<UserCounts>({
-    total: 0,
-    video: 0,
-    audio: 0,
-    text: 0
-  })
   const [roomId, setRoomId] = useState<string | null>(null)
-  const [userId, setUserId] = useState<'user1' | 'user2' | null>(null)
-  const [peerId, setPeerId] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<'user1' | 'user2' | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [peerName, setPeerName] = useState<string | null>(null)
-  const [middleDebateName, setMiddleDebateName] = useState<string | null>(null)
+  const [isWaitingForMatch, setIsWaitingForMatch] = useState(false)
 
   const timerRef = useRef<number | null>(null)
-  const userIdRef = useRef<'user1' | 'user2' | null>(null)
   const roundRef = useRef<number>(1)
-  
+  const matchHandledRef = useRef(false)
+
   // Keep refs in sync with state
-  useEffect(() => {
-    userIdRef.current = userId
-  }, [userId])
-  
   useEffect(() => {
     roundRef.current = round
   }, [round])
@@ -102,187 +98,123 @@ function App() {
     }
   }, [])
 
-  // Fetch reports on mount and when entering admin screen
-  const fetchReports = () => {
-    fetch(`${SERVER_URL}/api/reports`)
-      .then(res => res.json())
-      .then(data => setReports(data))
-      .catch(err => console.error('Failed to fetch reports:', err))
-  }
+  // Fetch reports from Supabase
+  const fetchReports = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Failed to fetch reports:', error)
+        return
+      }
+
+      setReports(data || [])
+    } catch (err) {
+      console.error('Failed to fetch reports:', err)
+    }
+  }, [])
 
   useEffect(() => {
-    fetchReports()
-  }, [])
+    if (connected) {
+      fetchReports()
+    }
+  }, [fetchReports, connected])
 
   // Refresh reports when entering admin screen
   useEffect(() => {
     if (screen === 'admin') {
       fetchReports()
     }
-  }, [screen])
+  }, [screen, fetchReports])
 
-  // Socket event listeners
+  // Sync context peer name
   useEffect(() => {
-    if (!socket) return
+    if (contextPeerName) {
+      setPeerName(contextPeerName)
+    }
+  }, [contextPeerName])
 
-    socket.on('userCounts', (counts: UserCounts) => {
-      setUserCounts(counts)
-    })
+  // Handle room status changes from context (realtime)
+  useEffect(() => {
+    if (!currentRoom) return
 
-    socket.on('waiting', () => {
-      setScreen('waiting')
-    })
+    setRoomId(currentRoom.id)
+    setChatMode(currentRoom.mode)
+    setCurrentSegment(currentRoom.current_segment)
 
-    socket.on('matchFound', ({ roomId: matchedRoomId, userId: matchedUserId, peerId: matchedPeerId, peerName: matchedPeerName, chatMode: matchedChatMode }) => {
-      console.log('Match found!', { roomId: matchedRoomId, userId: matchedUserId, peerId: matchedPeerId, peerName: matchedPeerName, chatMode: matchedChatMode, socketId: socket?.id })
-      
-      // Use the chat mode from server (for 'any' mode, this will be video/audio/text based on what was available)
-      const actualChatMode = matchedChatMode || chatMode
-      setChatMode(actualChatMode as ChatMode)
-      
-      setRoomId(matchedRoomId)
-      setUserId(matchedUserId)
-      setPeerId(matchedPeerId)
-      setPeerName(matchedPeerName || null)
+    // Calculate time remaining from segment_start_at
+    if (currentRoom.segment_start_at) {
+      const startTime = new Date(currentRoom.segment_start_at).getTime()
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      const remaining = Math.max(0, currentRoom.segment_duration_sec - elapsed)
+      setTimeRemaining(remaining)
+    }
+
+    // Handle match via realtime - when room status changes to 'matched'
+    if (currentRoom.status === 'matched' && isWaitingForMatch && !matchHandledRef.current) {
+      matchHandledRef.current = true
+      console.log('[App] Match detected via realtime!')
+
+      // Fetch peer name
+      const fetchPeer = async () => {
+        const { data: members } = await supabase
+          .from('room_members')
+          .select('display_name, role')
+          .eq('room_id', currentRoom.id)
+          .neq('user_id', userId)
+          .single()
+
+        if (members) {
+          setPeerName((members as { display_name: string | null }).display_name)
+        }
+      }
+      fetchPeer()
+
       setScreen('chat')
-      setCurrentSegment(0)
-      setRound(1)
-      setTimeRemaining(60)
-      
+      setIsWaitingForMatch(false)
       playMatchSound()
-      
-      if (actualChatMode === 'text' || actualChatMode === 'any') {
-        const welcomeMsg = matchedUserId === 'user1' 
+
+      const welcomeMsg =
+        userRole === 'user1'
           ? 'Connected! You will start sharing first.'
           : 'Connected! Wait for the other person to start.'
-        setMessages([{ sender: 'system', text: welcomeMsg }])
-      }
-    })
-
-    socket.on('messageReceived', (msg: { id?: string, senderSocketId: string, senderName: string, text: string, ts?: number, roomId?: string }) => {
-      // Determine if message is own by comparing socket IDs (source of truth)
-      const isOwn = msg.senderSocketId === socket?.id
-      
-      console.log('🔵 RECEIVED MESSAGE:', { 
-        senderSocketId: msg.senderSocketId, 
-        mySocketId: socket?.id,
-        isOwn,
-        senderName: msg.senderName,
-        text: msg.text 
-      })
-      
-      setMessages(prev => {
-        const newMessage: Message = { 
-          id: msg.id,
-          sender: 'user1', // Keep for compatibility
-          senderSocketId: msg.senderSocketId,
-          senderName: msg.senderName ?? 'Stranger',
-          text: msg.text,
-          ts: msg.ts,
-          isOwn // Store isOwn in message for easy access
-        }
-        
-        console.log('🔵 Adding received message:', { 
-          newMessage, 
-          isOwn,
-          displayAs: isOwn ? userName : newMessage.senderName
-        })
-        
-        const updated = [...prev, newMessage]
-        return updated
-      })
-    })
-
-    socket.on('peerDisconnected', ({ chatMode }: { chatMode?: string }) => {
-      // Show on-screen notification
-      setSuccessMessage('The other person has left the chat. Finding a new match...')
-      setShowSuccessMessage(true)
-      
-      // Clean up current chat state
-      if (socket && roomId) {
-        socket.emit('leaveRoom', { roomId })
-      }
-      
-      setMessages([])
-      setCurrentSegment(0)
-      setTimeRemaining(60)
-      setRoomId(null)
-      setUserId(null)
-      setPeerId(null)
-      setPeerName(null)
-      
-      // Auto-match in the same chat type
-      if (chatMode && socket) {
-        // Use userName if available, otherwise try localStorage
-        let nameToUse = userName
-        if (!nameToUse) {
-          try {
-            nameToUse = localStorage.getItem('onetwoone_name')?.trim() || 'User'
-          } catch {
-            nameToUse = 'User'
-          }
-        }
-        
-        // Set the chat mode and start matching
-        setChatMode(chatMode as ChatMode)
-        socket.emit('findMatch', { mode: chatMode, name: nameToUse })
-        setScreen('waiting')
-      } else {
-        // If no chat mode provided, go back to landing
-        setChatMode(null)
-        setScreen('landing')
-      }
-    })
-
-    socket.on('peerLeft', () => {
-      // Other user left the room - go back to waiting to find new match
-      setMessages([])
-      setCurrentSegment(0)
-      setRound(1)
-      setTimeRemaining(60)
-      setRoomId(null)
-      setUserId(null)
-      setPeerId(null)
-      setPeerName(null)
-      
-      if (chatMode) {
-        // Use userName if available, otherwise try localStorage
-        let nameToUse = userName
-        if (!nameToUse) {
-          try {
-            nameToUse = localStorage.getItem('onetwoone_name')?.trim() || 'User'
-          } catch {
-            nameToUse = 'User'
-          }
-        }
-        socket?.emit('findMatch', { mode: chatMode, name: nameToUse })
-        setScreen('waiting')
-      }
-    })
-
-    socket.on('segmentChanged', ({ segment, round: newRound }: { segment: number, round?: number }) => {
-      setCurrentSegment(segment)
-      if (newRound !== undefined) {
-        setRound(newRound)
-      }
-      setTimeRemaining(60)
-    })
-
-    return () => {
-      socket.off('userCounts')
-      socket.off('waiting')
-      socket.off('matchFound')
-      socket.off('messageReceived')
-      socket.off('peerDisconnected')
-      socket.off('peerLeft')
-      socket.off('segmentChanged')
+      setMessages([{ sender: 'system', text: welcomeMsg }])
     }
-  }, [socket, chatMode])
+
+    // Handle room closed
+    if (currentRoom.status === 'closed') {
+      handleRoomClosed()
+    }
+  }, [currentRoom, isWaitingForMatch, userId, userRole])
+
+  // Sync messages from context
+  useEffect(() => {
+    if (dbMessages.length > 0) {
+      const convertedMessages: Message[] = dbMessages.map((msg: DbMessage) => ({
+        id: msg.id,
+        sender: msg.user_id === userId ? 'user1' : 'user2',
+        senderName: msg.display_name || 'Stranger',
+        text: msg.text,
+        ts: new Date(msg.created_at).getTime(),
+        isOwn: msg.user_id === userId,
+      }))
+      setMessages(convertedMessages)
+    }
+  }, [dbMessages, userId])
+
+  // Sync current role from context
+  useEffect(() => {
+    if (currentRole) {
+      setUserRole(currentRole)
+    }
+  }, [currentRole])
 
   // Timer for segments
   useEffect(() => {
     if (screen !== 'chat') {
-      // Clear timer if not in chat screen
       if (timerRef.current) {
         clearInterval(timerRef.current)
         timerRef.current = null
@@ -290,48 +222,18 @@ function App() {
       return
     }
 
-    // Create the timer interval
-    timerRef.current = setInterval(() => {
-      setTimeRemaining(prev => {
+    timerRef.current = window.setInterval(() => {
+      setTimeRemaining((prev) => {
         const newTime = prev - 1
-        
+
         if (newTime <= 0) {
-          // Time's up - move to next segment
-          setCurrentSegment(prevSegment => {
-            const nextSegment = (prevSegment + 1) % 4
-            const isNewRound = prevSegment === 3 && nextSegment === 0
-            
-            // Increment round if we completed segment 4 (going from 3 to 0)
-            if (isNewRound) {
-              setRound(prevRound => {
-                const newRound = prevRound + 1
-                // Notify peer about segment change with new round
-                if (socket && roomId) {
-                  socket.emit('segmentChange', { 
-                    roomId, 
-                    segment: nextSegment,
-                    round: newRound
-                  })
-                }
-                return newRound
-              })
-            } else {
-              // Notify peer about segment change (same round)
-              if (socket && roomId) {
-                socket.emit('segmentChange', { 
-                  roomId, 
-                  segment: nextSegment,
-                  round: roundRef.current
-                })
-              }
-            }
-            
-            return nextSegment
-          })
-          
-          return 60 // Reset timer to 60 seconds
+          // Time's up - only user1 advances segment
+          if (userRole === 'user1') {
+            handleAdvanceSegment()
+          }
+          return 60 // Reset timer
         }
-        
+
         return newTime
       })
     }, 1000)
@@ -342,21 +244,55 @@ function App() {
         timerRef.current = null
       }
     }
-  }, [screen, socket, roomId, round]) // Include round in dependencies
+  }, [screen, userRole])
 
-  const startChat = (mode: Exclude<ChatMode, null>, name: string) => {
-    if (!socket) {
-      alert('Initializing connection... Please wait a moment and try again.')
-      return
+  const handleRoomClosed = () => {
+    setSuccessMessage('The other person has left the chat.')
+    setShowSuccessMessage(true)
+
+    setMessages([])
+    setCurrentSegment(0)
+    setRound(1)
+    setTimeRemaining(60)
+    setRoomId(null)
+    setUserRole(null)
+    setPeerName(null)
+    setIsWaitingForMatch(false)
+    matchHandledRef.current = false
+    setScreen('landing')
+    trackPresence(null)
+  }
+
+  const handleAdvanceSegment = async () => {
+    const nextSegment = (currentSegment + 1) % 4
+    const isNewRound = currentSegment === 3 && nextSegment === 0
+    const newRound = isNewRound ? round + 1 : round
+
+    setCurrentSegment(nextSegment)
+    setTimeRemaining(60)
+
+    if (isNewRound) {
+      setRound(newRound)
     }
-    
-    // Only allow starting if connected
+
+    // Update room in database
+    if (roomId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('rooms') as any)
+        .update({
+          current_segment: nextSegment,
+          segment_start_at: new Date().toISOString(),
+        })
+        .eq('id', roomId)
+    }
+  }
+
+  const startChat = async (mode: ChatMode, name: string) => {
     if (!connected) {
-      alert('Please wait for the server connection to be established.')
+      alert('Please wait for the connection to be established.')
       return
     }
-    
-    // Ensure we have a name - try localStorage if not provided
+
     let finalName = name.trim()
     if (!finalName) {
       try {
@@ -365,28 +301,56 @@ function App() {
         finalName = 'User'
       }
     }
-    
+
     // Save name to localStorage
     try {
       localStorage.setItem('onetwoone_name', finalName)
     } catch (error) {
       console.warn('Failed to save name to localStorage:', error)
     }
-    
-    // Set the mode and clear previous state
+
     setChatMode(mode)
     setUserName(finalName)
     setPeerName(null)
     setMessages([])
     setCurrentSegment(0)
+    setRound(1)
     setTimeRemaining(60)
     setRoomId(null)
-    setUserId(null)
-    setPeerId(null)
-    
-    // Emit the findMatch event - socket.io will queue it if not connected yet
-    // Server will store this name in socket.data.name
-    socket.emit('findMatch', { mode, name: finalName })
+    setUserRole(null)
+    matchHandledRef.current = false
+
+    // Call Supabase matchmaking
+    const result = await supabaseStartChat(mode, finalName)
+
+    if (!result) {
+      alert('Failed to start chat. Please try again.')
+      return
+    }
+
+    console.log('[App] Matchmaking result:', result)
+    setUserRole(result.role as 'user1' | 'user2')
+
+    if (result.matched) {
+      // Already matched!
+      setRoomId(result.roomId)
+      setPeerName(result.peerName)
+      setChatMode(result.chatMode)
+      setScreen('chat')
+      setIsWaitingForMatch(false)
+      playMatchSound()
+
+      const welcomeMsg =
+        result.role === 'user1'
+          ? 'Connected! You will start sharing first.'
+          : 'Connected! Wait for the other person to start.'
+      setMessages([{ sender: 'system', text: welcomeMsg }])
+    } else {
+      // Waiting for match - realtime subscription will detect match
+      setRoomId(result.roomId)
+      setIsWaitingForMatch(true)
+      setScreen('waiting')
+    }
   }
 
   const handleNext = () => {
@@ -395,35 +359,37 @@ function App() {
       message: 'Are you sure you want to move on to the next person?',
       confirmText: 'Yes, Next',
       cancelText: 'Cancel',
-      onConfirm: () => {
+      onConfirm: async () => {
         setConfirmModal(null)
-        if (socket && roomId) {
-          socket.emit('leaveRoom', { roomId })
-        }
-        
+        await supabaseLeaveRoom()
+
         setMessages([])
         setCurrentSegment(0)
         setRound(1)
         setTimeRemaining(60)
         setRoomId(null)
-        setUserId(null)
-        setPeerId(null)
+        setUserRole(null)
         setPeerName(null)
-        
-        if (chatMode) {
-          // Use userName if available, otherwise try localStorage
-          let nameToUse = userName
-          if (!nameToUse) {
-            try {
-              nameToUse = localStorage.getItem('onetwoone_name')?.trim() || 'User'
-            } catch {
-              nameToUse = 'User'
+        matchHandledRef.current = false
+
+        if (chatMode && userName) {
+          // Re-queue for matching
+          const result = await supabaseStartChat(chatMode, userName)
+          if (result) {
+            setUserRole(result.role as 'user1' | 'user2')
+            if (result.matched) {
+              setRoomId(result.roomId)
+              setPeerName(result.peerName)
+              setScreen('chat')
+              playMatchSound()
+            } else {
+              setRoomId(result.roomId)
+              setIsWaitingForMatch(true)
+              setScreen('waiting')
             }
           }
-          socket?.emit('findMatch', { mode: chatMode, name: nameToUse })
-          setScreen('waiting')
         }
-      }
+      },
     })
   }
 
@@ -433,16 +399,10 @@ function App() {
       message: 'Are you sure you want to end your session?',
       confirmText: 'Yes, End',
       cancelText: 'Cancel',
-      onConfirm: () => {
+      onConfirm: async () => {
         setConfirmModal(null)
-        if (socket && roomId) {
-          socket.emit('leaveRoom', { roomId })
-        }
-        
-        if (socket) {
-          socket.emit('leaveQueue')
-        }
-        
+        await supabaseLeaveRoom()
+
         setScreen('landing')
         setMessages([])
         setCurrentSegment(0)
@@ -450,10 +410,12 @@ function App() {
         setTimeRemaining(60)
         setChatMode(null)
         setRoomId(null)
-        setUserId(null)
-        setPeerId(null)
+        setUserRole(null)
         setPeerName(null)
-      }
+        setIsWaitingForMatch(false)
+        matchHandledRef.current = false
+        trackPresence(null)
+      },
     })
   }
 
@@ -461,46 +423,31 @@ function App() {
     setShowReportModal(true)
   }
 
-  const submitReport = async (reportData: { reasons: string[], details: string }) => {
+  const submitReport = async (reportData: { reasons: string[]; details: string }) => {
     try {
-      const response = await fetch(`${SERVER_URL}/api/reports`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(reportData),
-      })
-      
-      const result = await response.json()
-      if (result.success) {
-        setReports(prev => [result.report, ...prev])
-        setShowReportModal(false)
-        setSuccessMessage('Report submitted. Thank you for keeping our community safe.')
-        setShowSuccessMessage(true)
-        
-        // Clean up chat state and navigate to landing page
-        if (socket && roomId) {
-          socket.emit('leaveRoom', { roomId })
-        }
-        if (socket) {
-          socket.emit('leaveQueue')
-        }
-        
-        // Auto navigate to landing page after showing message
-        setTimeout(() => {
-          setScreen('landing')
-          setMessages([])
-          setCurrentSegment(0)
-          setRound(1)
-          setTimeRemaining(60)
-          setChatMode(null)
-          setRoomId(null)
-          setUserId(null)
-          setPeerId(null)
-          setPeerName(null)
-          setShowSuccessMessage(false)
-        }, 2000)
-      }
+      await supabaseSubmitReport(reportData.reasons, reportData.details)
+
+      setShowReportModal(false)
+      setSuccessMessage('Report submitted. Thank you for keeping our community safe.')
+      setShowSuccessMessage(true)
+
+      // Clean up chat state
+      await supabaseLeaveRoom()
+
+      // Auto navigate to landing page
+      setTimeout(() => {
+        setScreen('landing')
+        setMessages([])
+        setCurrentSegment(0)
+        setRound(1)
+        setTimeRemaining(60)
+        setChatMode(null)
+        setRoomId(null)
+        setUserRole(null)
+        setPeerName(null)
+        setShowSuccessMessage(false)
+        trackPresence(null)
+      }, 2000)
     } catch (error) {
       console.error('Failed to submit report:', error)
       setSuccessMessage('Failed to submit report. Please try again.')
@@ -511,132 +458,100 @@ function App() {
     }
   }
 
-  const handleSkip = () => {
-    console.log('[App] handleSkip called, currentSegment:', currentSegment)
-    const nextSegment = (currentSegment + 1) % 4
-    const isNewRound = currentSegment === 3 && nextSegment === 0
-    const newRound = isNewRound ? round + 1 : round
-    
-    console.log('[App] Moving to next segment:', nextSegment, 'round:', newRound)
-    setCurrentSegment(nextSegment)
-    setTimeRemaining(60)
-    
-    if (isNewRound) {
-      setRound(newRound)
+  const handleSkip = async () => {
+    if (userRole !== 'user1') {
+      console.log('[App] Only user1 can skip segments')
+      return
     }
-    
-    if (socket && roomId) {
-      console.log('[App] Emitting segmentChange event:', { roomId, segment: nextSegment, round: newRound })
-      socket.emit('segmentChange', { roomId, segment: nextSegment, round: newRound })
-    } else {
-      console.warn('[App] Cannot emit segmentChange - missing socket or roomId', { socket: !!socket, roomId })
-    }
+    await handleAdvanceSegment()
   }
 
-  const sendMessage = (text: string) => {
-    if (!socket || !roomId) {
-      console.log('Cannot send - missing:', { socket: !!socket, roomId })
+  const sendMessage = async (text: string) => {
+    if (!roomId || !userName) {
+      console.log('Cannot send - missing:', { roomId, userName })
       return
     }
 
-    // Add message locally with socket.id as source of truth
+    // Add message locally first for instant feedback
     const messageId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const newMessage: Message = {
       id: messageId,
-      sender: userId || 'user1', // Keep for compatibility
-      senderSocketId: socket.id, // Source of truth
-      senderName: userName || 'You',
+      sender: 'user1',
+      senderName: userName,
       text: text,
       ts: Date.now(),
-      isOwn: true // This is our own message
+      isOwn: true,
     }
-    
-    console.log('🟢 SENDING MESSAGE:', { socketId: socket.id, userName, text, roomId })
-    setMessages(prev => {
-      const updated = [...prev, newMessage]
-      return updated
-    })
-    
-    // Send to server - server will use socket.id as source of truth
-    socket.emit('sendMessage', { roomId, message: text })
+
+    setMessages((prev) => [...prev, newMessage])
+
+    // Send to Supabase
+    await supabaseSendMessage(text, userName)
+  }
+
+  const handleWaitingBack = async () => {
+    await supabaseLeaveRoom()
+
+    setScreen('landing')
+    setChatMode(null)
+    setRoomId(null)
+    setUserRole(null)
+    setPeerName(null)
+    setMessages([])
+    setCurrentSegment(0)
+    setRound(1)
+    setTimeRemaining(60)
+    setIsWaitingForMatch(false)
+    matchHandledRef.current = false
+    trackPresence(null)
   }
 
   return (
     <div className="app-container">
       <div className="bg-animation"></div>
-      
+
+      {/* Health indicator - shows in dev mode or on error */}
+      <HealthIndicator status={healthStatus} userId={userId} />
+
       {!connected && (
-        <div style={{ 
-          position: 'fixed', 
-          top: 10, 
-          right: 10, 
-          padding: '10px 15px', 
-          background: '#ff4444', 
-          color: 'white', 
-          borderRadius: '5px',
-          zIndex: 9999,
-          fontSize: '0.875rem',
-          fontWeight: 600
-        }}>
-          ⚠️ Connecting to server...
+        <div
+          style={{
+            position: 'fixed',
+            top: 10,
+            right: 10,
+            padding: '10px 15px',
+            background: healthStatus.authStatus === 'error' ? '#ff4444' : '#ffaa00',
+            color: 'white',
+            borderRadius: '5px',
+            zIndex: 9999,
+            fontSize: '0.875rem',
+            fontWeight: 600,
+          }}
+        >
+          {healthStatus.authStatus === 'error' ? '✗ Connection Error' : '○ Connecting...'}
           <div style={{ fontSize: '0.75rem', marginTop: '4px', opacity: 0.9 }}>
-            Make sure the server is running
+            {healthStatus.authError || 'Initializing session'}
           </div>
         </div>
       )}
-      
+
       {screen === 'landing' && (
         <LandingScreen
           userCounts={userCounts}
           onStartChat={startChat}
           onShowAdmin={() => setShowPasswordModal(true)}
-          onShowMiddleDebate={(name) => {
-            setMiddleDebateName(name)
-            setScreen('middleDebate')
+          onShowMiddleDebate={() => {
+            alert('Middle Debate coming soon!')
           }}
           connected={connected}
-        />
-      )}
-      
-      {screen === 'waiting' && (
-        <WaitingScreen 
-          onBack={() => {
-            // Leave queue and go back to landing
-            if (socket) {
-              socket.emit('leaveQueue')
-            }
-            setScreen('landing')
-            setChatMode(null)
-            setRoomId(null)
-            setUserId(null)
-            setPeerId(null)
-            setPeerName(null)
-            setMessages([])
-            setCurrentSegment(0)
-            setRound(1)
-            setTimeRemaining(60)
-          }}
-        />
-      )}
-      
-      {screen === 'admin' && (
-        <AdminScreen
-          reports={reports}
-          onBack={() => setScreen('landing')}
         />
       )}
 
-      {screen === 'middleDebate' && (
-        <MiddleDebate
-          socket={socket}
-          connected={connected}
-          serverUrl={SERVER_URL}
-          displayName={middleDebateName || userName || 'User'}
-          onBack={() => setScreen('landing')}
-        />
-      )}
-      
-      {screen === 'chat' && chatMode && roomId && userId && (
+      {screen === 'waiting' && <WaitingScreen onBack={handleWaitingBack} />}
+
+      {screen === 'admin' && <AdminScreen reports={reports} onBack={() => setScreen('landing')} />}
+
+      {screen === 'chat' && chatMode && roomId && userRole && (
         <ChatScreen
           chatMode={chatMode}
           currentSegment={currentSegment}
@@ -649,22 +564,18 @@ function App() {
           onSkip={handleSkip}
           onSendMessage={sendMessage}
           roomId={roomId}
-          userId={userId}
-          peerId={peerId}
-          socket={socket}
+          userId={userRole}
+          peerId={null}
+          socket={null}
           userName={userName || 'You'}
           peerName={peerName || 'Stranger'}
         />
       )}
-      
-      
+
       {showReportModal && (
-        <ReportModal
-          onSubmit={submitReport}
-          onClose={() => setShowReportModal(false)}
-        />
+        <ReportModal onSubmit={submitReport} onClose={() => setShowReportModal(false)} />
       )}
-      
+
       {confirmModal && (
         <ConfirmModal
           title={confirmModal.title}
@@ -675,7 +586,7 @@ function App() {
           onCancel={() => setConfirmModal(null)}
         />
       )}
-      
+
       {showSuccessMessage && (
         <SuccessMessage
           message={successMessage}
@@ -683,7 +594,7 @@ function App() {
           autoCloseDelay={3000}
         />
       )}
-      
+
       {showPasswordModal && (
         <PasswordModal
           onSuccess={() => {
