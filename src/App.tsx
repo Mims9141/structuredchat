@@ -8,13 +8,15 @@ import ConfirmModal from './components/ConfirmModal'
 import SuccessMessage from './components/SuccessMessage'
 import PasswordModal from './components/PasswordModal'
 import HealthIndicator from './components/HealthIndicator'
+import MiddleDebate from './components/MiddleDebate'
+import { MiddleDebateProvider } from './contexts/MiddleDebateContext'
 import { useSupabase } from './contexts/SupabaseContext'
 import type { Message as DbMessage, ChatMode } from './contexts/SupabaseContext'
 import { supabase } from './lib/supabase'
 import { initSounds, playMatchSound } from './lib/sounds'
 import './App.css'
 
-type Screen = 'landing' | 'waiting' | 'chat' | 'admin'
+type Screen = 'landing' | 'waiting' | 'chat' | 'admin' | 'middleDebate'
 
 interface Message {
   id?: string
@@ -72,6 +74,7 @@ function App() {
   const [userName, setUserName] = useState<string | null>(null)
   const [peerName, setPeerName] = useState<string | null>(null)
   const [isWaitingForMatch, setIsWaitingForMatch] = useState(false)
+  const [middleDebateRoomId, setMiddleDebateRoomId] = useState<string | null>(null)
 
   const timerRef = useRef<number | null>(null)
   const roundRef = useRef<number>(1)
@@ -540,11 +543,23 @@ function App() {
           userCounts={userCounts}
           onStartChat={startChat}
           onShowAdmin={() => setShowPasswordModal(true)}
-          onShowMiddleDebate={() => {
-            alert('Middle Debate coming soon!')
-          }}
+          onShowMiddleDebate={() => setScreen('middleDebate')}
           connected={connected}
         />
+      )}
+
+      {screen === 'middleDebate' && (
+        <MiddleDebateProvider roomId={middleDebateRoomId} userId={userId}>
+          <MiddleDebate
+            connected={connected}
+            onBack={() => {
+              setScreen('landing')
+              setMiddleDebateRoomId(null)
+            }}
+            roomId={middleDebateRoomId}
+            setRoomId={setMiddleDebateRoomId}
+          />
+        </MiddleDebateProvider>
       )}
 
       {screen === 'waiting' && <WaitingScreen onBack={handleWaitingBack} />}
