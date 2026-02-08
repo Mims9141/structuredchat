@@ -86,6 +86,7 @@ function LandingScreen({ userCounts, onStartChat, onShowAdmin, onShowMiddleDebat
         </button>
       </div>
       
+      <img src="/middle.png" alt="OneTwoOne" className="landing-logo-img" />
       <h1 className="logo">OneTwoOne</h1>
       <p className="tagline">
         Balanced conversations with random strangers. Equal time to share, equal time to listen.

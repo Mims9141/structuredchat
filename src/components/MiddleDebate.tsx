@@ -480,7 +480,10 @@ export default function MiddleDebate({ connected, onBack, roomId, setRoomId }: M
           <button className="debate-back" type="button" onClick={onBack}>
             ← Back
           </button>
-          <div className="debate-title">Middle Debate</div>
+          <div className="debate-title">
+            <img src="/middle.png" alt="" className="debate-title-logo" />
+            Middle Debate
+          </div>
           <div className="debate-status">{connected ? 'Connected' : 'Connecting…'}</div>
         </div>
 
@@ -612,7 +615,10 @@ export default function MiddleDebate({ connected, onBack, roomId, setRoomId }: M
           <button className="debate-back" type="button" onClick={handleBack}>
             ← Back
           </button>
-          <div className="debate-title">Middle Debate · Room {formatRoomId(roomId!)}</div>
+          <div className="debate-title">
+            <img src="/middle.png" alt="" className="debate-title-logo" />
+            Middle Debate · Room {formatRoomId(roomId!)}
+          </div>
           <div className="debate-status">Waiting for opponent</div>
         </div>
         <div className="debate-lobby">
@@ -646,6 +652,7 @@ export default function MiddleDebate({ connected, onBack, roomId, setRoomId }: M
           ← Back
         </button>
         <div className="debate-title">
+          <img src="/middle.png" alt="" className="debate-title-logo" />
           Middle Debate
           {roomId ? <span className="debate-roomcode">Room {formatRoomId(roomId)}</span> : null}
         </div>

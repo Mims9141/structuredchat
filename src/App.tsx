@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import LandingScreen from './components/LandingScreen'
 import WaitingScreen from './components/WaitingScreen'
 import ChatScreen from './components/ChatScreen'
@@ -16,7 +17,7 @@ import { supabase } from './lib/supabase'
 import { initSounds, playMatchSound } from './lib/sounds'
 import './App.css'
 
-type Screen = 'landing' | 'waiting' | 'chat' | 'admin' | 'middleDebate'
+type Screen = 'landing' | 'waiting' | 'chat' | 'admin'
 
 interface Message {
   id?: string
@@ -35,6 +36,8 @@ interface Report {
 }
 
 function App() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const {
     connected,
     userId,
@@ -538,28 +541,28 @@ function App() {
         </div>
       )}
 
-      {screen === 'landing' && (
-        <LandingScreen
-          userCounts={userCounts}
-          onStartChat={startChat}
-          onShowAdmin={() => setShowPasswordModal(true)}
-          onShowMiddleDebate={() => setScreen('middleDebate')}
-          connected={connected}
-        />
-      )}
-
-      {screen === 'middleDebate' && (
+      {location.pathname === '/middle-debate' && (
         <MiddleDebateProvider roomId={middleDebateRoomId} userId={userId}>
           <MiddleDebate
             connected={connected}
             onBack={() => {
-              setScreen('landing')
+              navigate('/')
               setMiddleDebateRoomId(null)
             }}
             roomId={middleDebateRoomId}
             setRoomId={setMiddleDebateRoomId}
           />
         </MiddleDebateProvider>
+      )}
+
+      {screen === 'landing' && location.pathname !== '/middle-debate' && (
+        <LandingScreen
+          userCounts={userCounts}
+          onStartChat={startChat}
+          onShowAdmin={() => setShowPasswordModal(true)}
+          onShowMiddleDebate={() => navigate('/middle-debate')}
+          connected={connected}
+        />
       )}
 
       {screen === 'waiting' && <WaitingScreen onBack={handleWaitingBack} />}

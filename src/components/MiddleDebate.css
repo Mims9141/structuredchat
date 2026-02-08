@@ -26,11 +26,19 @@
 }
 
 .debate-title {
+  font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   display: flex;
   gap: 0.75rem;
   align-items: center;
+}
+
+.debate-title-logo {
+  height: 2.25em;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .debate-roomcode {

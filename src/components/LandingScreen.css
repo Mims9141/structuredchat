@@ -9,6 +9,15 @@
   position: relative;
 }
 
+.landing-logo-img {
+  display: block;
+  max-width: 160px;
+  width: 100%;
+  height: auto;
+  margin: 0 auto 0.75rem;
+  object-fit: contain;
+}
+
 .logo {
   font-size: 4rem;
   font-weight: 800;
@@ -380,6 +389,10 @@
 }
 
 @media (max-width: 768px) {
+  .landing-logo-img {
+    max-width: 130px;
+  }
+
   .logo {
     font-size: 3rem;
   }
